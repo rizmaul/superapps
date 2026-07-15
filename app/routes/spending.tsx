@@ -50,25 +50,42 @@ import {
 import { Switch } from "@/components/ui/switch";
 
 // DB
-import { getDB } from "@/lib/db.server";
 import type { Route } from "./+types/spending";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const db = getDB(context.cloudflare.env.DB);
+  const db = context.cloudflare.env.DB;
 
-  const logs = await db.spendingLog.findMany({
-    orderBy: {
-      spentAt: "desc"
-    }
-  });
+  const { results: rawLogs } = await db
+    .prepare("SELECT * FROM spending_logs ORDER BY spent_at DESC")
+    .all();
 
-  const quotas = await db.monthlyQuota.findMany();
+  const { results: rawQuotas } = await db
+    .prepare("SELECT * FROM monthly_quotas")
+    .all();
+
+  const logs = (rawLogs || []).map((log: any) => ({
+    id: log.id,
+    amount: log.amount,
+    category: log.category,
+    spentAt: log.spent_at,
+    receiptImageUrl: log.receipt_image_url,
+    notes: log.notes,
+    useQuota: log.use_quota !== 0
+  }));
+
+  const quotas = (rawQuotas || []).map((q: any) => ({
+    id: q.id,
+    year: q.year,
+    month: q.month,
+    amount: q.amount,
+    createdAt: q.created_at
+  }));
 
   return { logs, quotas };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const db = getDB(context.cloudflare.env.DB);
+  const db = context.cloudflare.env.DB;
   const formData = await request.formData();
   const intent = formData.get("intent");
 
@@ -82,37 +99,27 @@ export async function action({ request, context }: Route.ActionArgs) {
     const spentAt = spentAtStr ? new Date(spentAtStr) : new Date();
 
     if (intent === "create-expense") {
-      await db.spendingLog.create({
-        data: {
-          amount,
-          category,
-          spentAt,
-          notes,
-          useQuota
-        }
-      });
+      await db
+        .prepare("INSERT INTO spending_logs (id, amount, category, spent_at, notes, use_quota) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(crypto.randomUUID(), amount, category, spentAt.toISOString(), notes, useQuota ? 1 : 0)
+        .run();
       return { success: true };
     } else {
       const id = formData.get("id") as string;
-      await db.spendingLog.update({
-        where: { id },
-        data: {
-          amount,
-          category,
-          spentAt,
-          notes,
-          useQuota
-        }
-      });
+      await db
+        .prepare("UPDATE spending_logs SET amount = ?, category = ?, spent_at = ?, notes = ?, use_quota = ? WHERE id = ?")
+        .bind(amount, category, spentAt.toISOString(), notes, useQuota ? 1 : 0, id)
+        .run();
       return { success: true };
     }
   }
 
   if (intent === "delete-expense") {
     const id = formData.get("id") as string;
-    await db.spendingLog.delete({
-      where: { id }
-    });
+    await db
+      .prepare("DELETE FROM spending_logs WHERE id = ?")
+      .bind(id)
+      .run();
     return { success: true };
   }
 
@@ -121,13 +128,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     const month = parseInt(formData.get("month") as string);
     const amount = parseFloat(formData.get("amount") as string);
 
-    await db.monthlyQuota.upsert({
-      where: {
-        year_month: { year, month }
-      },
-      update: { amount },
-      create: { year, month, amount }
-    });
+    await db
+      .prepare("INSERT INTO monthly_quotas (id, year, month, amount) VALUES (?, ?, ?, ?) ON CONFLICT(year, month) DO UPDATE SET amount = EXCLUDED.amount")
+      .bind(crypto.randomUUID(), year, month, amount)
+      .run();
     return { success: true };
   }
 

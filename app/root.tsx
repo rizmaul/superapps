@@ -9,17 +9,31 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { getDB } from "@/lib/db.server";
-
 export async function loader({ context }: Route.LoaderArgs) {
-	const db = getDB(context.cloudflare.env.DB);
-	const projects = await db.project.findMany({
-		where: { isArchived: false },
-		orderBy: { name: "asc" },
-	});
-	const tags = await db.tag.findMany({
-		orderBy: { name: "asc" },
-	});
+	const db = context.cloudflare.env.DB;
+	
+	const { results: rawProjects } = await db
+		.prepare("SELECT * FROM projects WHERE is_archived = 0 ORDER BY name ASC")
+		.all();
+	
+	const { results: rawTags } = await db
+		.prepare("SELECT * FROM tags ORDER BY name ASC")
+		.all();
+
+	const projects = (rawProjects || []).map((p: any) => ({
+		id: p.id,
+		name: p.name,
+		description: p.description,
+		colorHex: p.color_hex,
+		isArchived: Boolean(p.is_archived),
+		createdAt: p.created_at,
+	}));
+
+	const tags = (rawTags || []).map((t: any) => ({
+		id: t.id,
+		name: t.name,
+	}));
+
 	return { projects, tags };
 }
 

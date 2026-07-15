@@ -49,56 +49,112 @@ import {
 } from "@/components/ui/dialog";
 
 // DB
-import { getDB } from "@/lib/db.server";
 import type { Route } from "./+types/tasks";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const db = getDB(context.cloudflare.env.DB);
+  const db = context.cloudflare.env.DB;
 
-  const tasks = await db.task.findMany({
-    include: {
-      project: true,
-      tags: {
-        include: {
-          tag: true,
-        },
-      },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  const { results: rawTasks } = await db
+    .prepare("SELECT * FROM tasks ORDER BY created_at DESC")
+    .all();
 
-  const projects = await db.project.findMany({
-    where: { isArchived: false },
-    include: {
-      _count: {
-        select: {
-          tasks: {
-            where: {
-              status: { not: "done" },
-            },
-          },
-        },
-      },
-    },
-    orderBy: { name: "asc" },
-  });
+  const { results: rawProjects } = await db
+    .prepare("SELECT * FROM projects")
+    .all();
 
-  const tags = await db.tag.findMany({
-    include: {
-      _count: {
-        select: { tasks: true },
-      },
-    },
-    orderBy: { name: "asc" },
-  });
+  const { results: rawTaskTags } = await db
+    .prepare("SELECT tt.*, t.name as tag_name FROM task_tags tt JOIN tags t ON tt.tag_id = t.id")
+    .all();
+
+  // Helper map for projects
+  const projectsMap = new Map();
+  if (rawProjects) {
+    rawProjects.forEach((p: any) => {
+      projectsMap.set(p.id, {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        colorHex: p.color_hex,
+        isArchived: Boolean(p.is_archived),
+        createdAt: p.created_at,
+      });
+    });
+  }
+
+  // Helper map for task tags
+  const tagsByTaskId: Record<string, any[]> = {};
+  if (rawTaskTags) {
+    rawTaskTags.forEach((tt: any) => {
+      if (!tagsByTaskId[tt.task_id]) {
+        tagsByTaskId[tt.task_id] = [];
+      }
+      tagsByTaskId[tt.task_id].push({
+        tag: {
+          id: tt.tag_id,
+          name: tt.tag_name,
+        }
+      });
+    });
+  }
+
+  // Construct tasks array
+  const tasks = (rawTasks || []).map((t: any) => ({
+    id: t.id,
+    title: t.title,
+    description: t.description,
+    projectId: t.project_id,
+    status: t.status,
+    dueDate: t.due_date,
+    reminderSent: Boolean(t.reminder_sent),
+    createdAt: t.created_at,
+    project: t.project_id ? projectsMap.get(t.project_id) : null,
+    tags: tagsByTaskId[t.id] || [],
+  }));
+
+  // Query projects with active task count
+  const { results: rawProjectsWithCount } = await db.prepare(`
+    SELECT p.*, COUNT(t.id) as active_tasks_count
+    FROM projects p
+    LEFT JOIN tasks t ON t.project_id = p.id AND t.status != 'done'
+    WHERE p.is_archived = 0
+    GROUP BY p.id
+    ORDER BY p.name ASC
+  `).all();
+
+  const projects = (rawProjectsWithCount || []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    colorHex: p.color_hex,
+    isArchived: Boolean(p.is_archived),
+    createdAt: p.created_at,
+    _count: {
+      tasks: p.active_tasks_count || 0
+    }
+  }));
+
+  // Query tags with tasks count
+  const { results: rawTagsWithCount } = await db.prepare(`
+    SELECT t.*, COUNT(tt.task_id) as tasks_count
+    FROM tags t
+    LEFT JOIN task_tags tt ON tt.tag_id = t.id
+    GROUP BY t.id
+    ORDER BY t.name ASC
+  `).all();
+
+  const tags = (rawTagsWithCount || []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    _count: {
+      tasks: t.tasks_count || 0
+    }
+  }));
 
   return { tasks, projects, tags };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const db = getDB(context.cloudflare.env.DB);
+  const db = context.cloudflare.env.DB;
   const formData = await request.formData();
   const intent = formData.get("intent");
 
@@ -110,7 +166,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     const tagsInput = (formData.get("tags") as string) || ""; // comma separated
 
     const pId = projectId && projectId !== "none" ? projectId : null;
-    const due = dueDateStr ? new Date(dueDateStr) : null;
+    const due = dueDateStr ? new Date(dueDateStr).toISOString() : null;
 
     // Process tags
     const tagNames = tagsInput
@@ -119,31 +175,26 @@ export async function action({ request, context }: Route.ActionArgs) {
       .filter((t) => t.length > 0);
 
     if (intent === "create-task") {
-      const task = await db.task.create({
-        data: {
-          title,
-          description,
-          projectId: pId,
-          dueDate: due,
-          status: "todo",
-        },
-      });
+      const taskId = crypto.randomUUID();
+      await db
+        .prepare("INSERT INTO tasks (id, title, description, project_id, due_date, status) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(taskId, title, description, pId, due, "todo")
+        .run();
 
       // Link tags
       if (tagNames.length > 0) {
         for (const name of tagNames) {
-          const tag = await db.tag.upsert({
-            where: { name },
-            create: { name },
-            update: {},
-          });
+          let tag = await db.prepare("SELECT * FROM tags WHERE name = ?").bind(name).first() as any;
+          let tagId = tag?.id;
+          if (!tagId) {
+            tagId = crypto.randomUUID();
+            await db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)").bind(tagId, name).run();
+          }
 
-          await db.taskTag.create({
-            data: {
-              taskId: task.id,
-              tagId: tag.id,
-            },
-          });
+          await db
+            .prepare("INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)")
+            .bind(taskId, tagId)
+            .run();
         }
       }
 
@@ -152,36 +203,31 @@ export async function action({ request, context }: Route.ActionArgs) {
       const id = formData.get("id") as string;
 
       // Update task
-      await db.task.update({
-        where: { id },
-        data: {
-          title,
-          description,
-          projectId: pId,
-          dueDate: due,
-        },
-      });
+      await db
+        .prepare("UPDATE tasks SET title = ?, description = ?, project_id = ?, due_date = ? WHERE id = ?")
+        .bind(title, description, pId, due, id)
+        .run();
 
       // Clear existing tags
-      await db.taskTag.deleteMany({
-        where: { taskId: id },
-      });
+      await db
+        .prepare("DELETE FROM task_tags WHERE task_id = ?")
+        .bind(id)
+        .run();
 
       // Relink tags
       if (tagNames.length > 0) {
         for (const name of tagNames) {
-          const tag = await db.tag.upsert({
-            where: { name },
-            create: { name },
-            update: {},
-          });
+          let tag = await db.prepare("SELECT * FROM tags WHERE name = ?").bind(name).first() as any;
+          let tagId = tag?.id;
+          if (!tagId) {
+            tagId = crypto.randomUUID();
+            await db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)").bind(tagId, name).run();
+          }
 
-          await db.taskTag.create({
-            data: {
-              taskId: id,
-              tagId: tag.id,
-            },
-          });
+          await db
+            .prepare("INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)")
+            .bind(id, tagId)
+            .run();
         }
       }
 
@@ -194,30 +240,30 @@ export async function action({ request, context }: Route.ActionArgs) {
     const currentStatus = formData.get("status") as string;
     const nextStatus = currentStatus === "done" ? "todo" : "done";
 
-    await db.task.update({
-      where: { id },
-      data: {
-        status: nextStatus,
-      },
-    });
+    await db
+      .prepare("UPDATE tasks SET status = ? WHERE id = ?")
+      .bind(nextStatus, id)
+      .run();
 
     return { success: true };
   }
 
   if (intent === "delete-task") {
     const id = formData.get("id") as string;
-    await db.task.delete({
-      where: { id },
-    });
+    await db
+      .prepare("DELETE FROM tasks WHERE id = ?")
+      .bind(id)
+      .run();
 
     return { success: true };
   }
 
   if (intent === "delete-tag") {
     const id = formData.get("id") as string;
-    await db.tag.delete({
-      where: { id },
-    });
+    await db
+      .prepare("DELETE FROM tags WHERE id = ?")
+      .bind(id)
+      .run();
     return { success: true };
   }
 

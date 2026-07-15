@@ -37,36 +37,77 @@ import {
 } from "@/components/ui/dialog";
 
 // DB
-import { getDB } from "@/lib/db.server";
 import type { Route } from "./+types/projects";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const db = getDB(context.cloudflare.env.DB);
+  const db = context.cloudflare.env.DB;
   
-  const projects = await db.project.findMany({
-    where: { isArchived: false },
-    include: {
-      tasks: {
-        include: {
-          tags: {
-            include: {
-              tag: true
-            }
-          }
-        },
-        orderBy: {
-          createdAt: "desc"
-        }
+  const { results: rawProjects } = await db
+    .prepare("SELECT * FROM projects WHERE is_archived = 0 ORDER BY name ASC")
+    .all();
+
+  const { results: rawTasks } = await db
+    .prepare("SELECT * FROM tasks ORDER BY created_at DESC")
+    .all();
+
+  const { results: rawTaskTags } = await db
+    .prepare("SELECT tt.*, t.name as tag_name FROM task_tags tt JOIN tags t ON tt.tag_id = t.id")
+    .all();
+
+  // Group tags by task ID
+  const tagsByTaskId: Record<string, any[]> = {};
+  if (rawTaskTags) {
+    rawTaskTags.forEach((tt: any) => {
+      if (!tagsByTaskId[tt.task_id]) {
+        tagsByTaskId[tt.task_id] = [];
       }
-    },
-    orderBy: { name: "asc" }
-  });
+      tagsByTaskId[tt.task_id].push({
+        tag: {
+          id: tt.tag_id,
+          name: tt.tag_name,
+        }
+      });
+    });
+  }
+
+  // Group tasks by project ID and map to camelCase
+  const tasksByProjectId: Record<string, any[]> = {};
+  if (rawTasks) {
+    rawTasks.forEach((t: any) => {
+      const pId = t.project_id || "none";
+      if (!tasksByProjectId[pId]) {
+        tasksByProjectId[pId] = [];
+      }
+      tasksByProjectId[pId].push({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        projectId: t.project_id,
+        status: t.status,
+        dueDate: t.due_date,
+        reminderSent: Boolean(t.reminder_sent),
+        createdAt: t.created_at,
+        tags: tagsByTaskId[t.id] || [],
+      });
+    });
+  }
+
+  // Map projects to camelCase and attach tasks
+  const projects = (rawProjects || []).map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    colorHex: p.color_hex,
+    isArchived: Boolean(p.is_archived),
+    createdAt: p.created_at,
+    tasks: tasksByProjectId[p.id] || [],
+  }));
 
   return { projects };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const db = getDB(context.cloudflare.env.DB);
+  const db = context.cloudflare.env.DB;
   const formData = await request.formData();
   const intent = formData.get("intent");
 
@@ -76,35 +117,27 @@ export async function action({ request, context }: Route.ActionArgs) {
     const colorHex = formData.get("colorHex") as string || "#739dd1";
 
     if (intent === "create-project") {
-      await db.project.create({
-        data: {
-          name,
-          description,
-          colorHex,
-          isArchived: false,
-        }
-      });
+      await db
+        .prepare("INSERT INTO projects (id, name, description, color_hex, is_archived) VALUES (?, ?, ?, ?, ?)")
+        .bind(crypto.randomUUID(), name, description, colorHex, 0)
+        .run();
       return { success: true };
     } else {
       const id = formData.get("id") as string;
-      await db.project.update({
-        where: { id },
-        data: {
-          name,
-          description,
-          colorHex,
-        }
-      });
+      await db
+        .prepare("UPDATE projects SET name = ?, description = ?, color_hex = ? WHERE id = ?")
+        .bind(name, description, colorHex, id)
+        .run();
       return { success: true };
     }
   }
 
   if (intent === "archive-project") {
     const id = formData.get("id") as string;
-    await db.project.update({
-      where: { id },
-      data: { isArchived: true }
-    });
+    await db
+      .prepare("UPDATE projects SET is_archived = 1 WHERE id = ?")
+      .bind(id)
+      .run();
     return { success: true };
   }
 
@@ -115,17 +148,12 @@ export async function action({ request, context }: Route.ActionArgs) {
     const dueDateStr = formData.get("dueDate") as string;
 
     const pId = projectId && projectId !== "none" ? projectId : null;
-    const due = dueDateStr ? new Date(dueDateStr) : null;
+    const due = dueDateStr ? new Date(dueDateStr).toISOString() : null;
 
-    await db.task.create({
-      data: {
-        title,
-        description,
-        projectId: pId,
-        dueDate: due,
-        status: "todo",
-      }
-    });
+    await db
+      .prepare("INSERT INTO tasks (id, title, description, project_id, due_date, status) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), title, description, pId, due, "todo")
+      .run();
 
     return { success: true };
   }
@@ -136,16 +164,12 @@ export async function action({ request, context }: Route.ActionArgs) {
     const description = formData.get("description") as string;
     const dueDateStr = formData.get("dueDate") as string;
 
-    const due = dueDateStr ? new Date(dueDateStr) : null;
+    const due = dueDateStr ? new Date(dueDateStr).toISOString() : null;
 
-    await db.task.update({
-      where: { id },
-      data: {
-        title,
-        description,
-        dueDate: due,
-      }
-    });
+    await db
+      .prepare("UPDATE tasks SET title = ?, description = ?, due_date = ? WHERE id = ?")
+      .bind(title, description, due, id)
+      .run();
 
     return { success: true };
   }
@@ -155,21 +179,20 @@ export async function action({ request, context }: Route.ActionArgs) {
     const currentStatus = formData.get("status") as string;
     const nextStatus = currentStatus === "done" ? "todo" : "done";
 
-    await db.task.update({
-      where: { id },
-      data: {
-        status: nextStatus
-      }
-    });
+    await db
+      .prepare("UPDATE tasks SET status = ? WHERE id = ?")
+      .bind(nextStatus, id)
+      .run();
 
     return { success: true };
   }
 
   if (intent === "delete-task") {
     const id = formData.get("id") as string;
-    await db.task.delete({
-      where: { id }
-    });
+    await db
+      .prepare("DELETE FROM tasks WHERE id = ?")
+      .bind(id)
+      .run();
 
     return { success: true };
   }
