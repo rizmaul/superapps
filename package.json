@@ -61,7 +61,9 @@
 		"deploy": "wrangler deploy",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
-		"typecheck": "npm run cf-typegen && tsc -b"
+		"typecheck": "npm run cf-typegen && tsc -b",
+		"migrate:remote": "wrangler d1 migrations apply DB --remote",
+		"migrate:local": "wrangler d1 migrations apply DB"
 	},
 	"type": "module"
 }

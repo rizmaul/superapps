@@ -90,7 +90,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "create-expense" || intent === "update-expense") {
-    const amount = parseFloat(formData.get("amount") as string);
+    const amountRaw = formData.get("amount") as string;
+    const amount = parseFloat(amountRaw.replace(/\D/g, "")) || 0;
     const category = formData.get("category") as string;
     const spentAtStr = formData.get("spentAt") as string;
     const notes = formData.get("notes") as string;
@@ -126,7 +127,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (intent === "set-quota") {
     const year = parseInt(formData.get("year") as string);
     const month = parseInt(formData.get("month") as string);
-    const amount = parseFloat(formData.get("amount") as string);
+    const amountRaw = formData.get("amount") as string;
+    const amount = parseFloat(amountRaw.replace(/\D/g, "")) || 0;
 
     await db
       .prepare("INSERT INTO monthly_quotas (id, year, month, amount) VALUES (?, ?, ?, ?) ON CONFLICT(year, month) DO UPDATE SET amount = EXCLUDED.amount")
@@ -144,7 +146,7 @@ const CATEGORIES = [
   { value: "utilities", label: "Utilities & Bills", icon: Zap, colorClass: "bg-indigo-50 text-indigo-500 border-indigo-100" },
   { value: "shopping", label: "Shopping", icon: ShoppingBag, colorClass: "bg-amber-50 text-amber-500 border-amber-100" },
   { value: "entertainment", label: "Entertainment", icon: Tv, colorClass: "bg-purple-50 text-purple-500 border-purple-100" },
-  { value: "others", label: "Others", icon: HelpCircle, colorClass: "bg-gray-50 text-gray-500 border-gray-100" },
+  { value: "others", label: "Others", icon: HelpCircle, colorClass: "bg-gray-50 text-gray-500 border-gray-200" },
 ];
 
 // Debt calculation logic that carries over month by month
@@ -260,6 +262,12 @@ function calculateDebtAndQuotas(
   return resultsByMonth;
 }
 
+function formatRupiahInput(val: string): string {
+  const digits = val.replace(/\D/g, "");
+  if (!digits) return "";
+  return new Intl.NumberFormat("id-ID").format(parseInt(digits, 10));
+}
+
 export default function SpendingRoute() {
   const { logs, quotas } = useLoaderData<typeof loader>();
   const submit = useSubmit();
@@ -314,7 +322,7 @@ export default function SpendingRoute() {
   const { monthlyQuota, dailyQuota, endDebt } = monthData;
 
   useEffect(() => {
-    setQuotaInput(monthlyQuota.toString());
+    setQuotaInput(formatRupiahInput(monthlyQuota.toString()));
   }, [monthlyQuota]);
 
   // Format IDR Currency
@@ -376,7 +384,7 @@ export default function SpendingRoute() {
 
   const handleOpenEdit = (log: any) => {
     setEditingLog(log);
-    setAmount(log.amount.toString());
+    setAmount(formatRupiahInput(log.amount.toString()));
     setCategory(log.category);
     setSpentAt(new Date(log.spentAt));
     setNotes(log.notes || "");
@@ -405,7 +413,7 @@ export default function SpendingRoute() {
 
       setTimeout(() => {
         setIsScanning(false);
-        setAmount("85000");
+        setAmount(formatRupiahInput("85000"));
         setCategory("food");
         setSpentAt(new Date());
         setNotes("AI scan: Lunch at Starbucks (Mock)");
@@ -472,7 +480,7 @@ export default function SpendingRoute() {
         onClick={handleScanClick}
         variant="outline"
         disabled={isScanning}
-        className="text-xs gap-1.5 h-8 px-3 font-semibold border-primary/20 text-primary hover:bg-primary/5 shadow-sm"
+        className="text-xs gap-1.5 h-8 px-3 font-semibold border-primary/20 text-primary hover:bg-primary/5 rounded-md"
       >
         {isScanning ? (
           <>
@@ -489,7 +497,7 @@ export default function SpendingRoute() {
 
       <Button
         onClick={handleOpenCreate}
-        className="text-xs gap-1.5 h-8 px-3 font-semibold shadow-sm"
+        className="text-xs gap-1.5 h-8 px-3 font-semibold rounded-md"
       >
         <Plus className="w-3.5 h-3.5" />
         <span>Add Expense</span>
@@ -551,7 +559,7 @@ export default function SpendingRoute() {
   };
 
   const renderEmptyState = () => (
-    <div className="bg-white border border-dashed border-gray-200 py-12 px-4 text-center flex flex-col items-center justify-center gap-3">
+    <div className="bg-white border border-dashed border-gray-200 rounded-md py-12 px-4 text-center flex flex-col items-center justify-center gap-3">
       <div className="w-12 h-12 bg-muted/40 rounded-full flex items-center justify-center text-muted-foreground">
         <Receipt className="w-6 h-6" />
       </div>
@@ -570,10 +578,10 @@ export default function SpendingRoute() {
       <div
         key={log.id}
         onClick={() => handleOpenEdit(log)}
-        className="bg-white border border-gray-100 p-3.5 shadow-sm flex items-center justify-between gap-4 cursor-pointer active:bg-gray-50/50 hover:border-primary/10 transition-all duration-200"
+        className="bg-white border border-gray-200 rounded-md p-3.5 flex items-center justify-between gap-4 cursor-pointer active:bg-gray-50/50 hover:border-primary/10 transition-all duration-200"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className={cn("w-10 h-10 flex items-center justify-center border", cat.colorClass)}>
+          <div className={cn("w-10 h-10 rounded-md flex items-center justify-center border", cat.colorClass)}>
             <CatIcon className="w-5 h-5" />
           </div>
 
@@ -609,7 +617,7 @@ export default function SpendingRoute() {
               e.stopPropagation();
               handleDelete(log.id);
             }}
-            className="w-8 h-8 hover:bg-gray-50 flex items-center justify-center text-muted-foreground hover:text-destructive transition-all duration-150"
+            className="w-8 h-8 rounded-md hover:bg-gray-50 flex items-center justify-center text-muted-foreground hover:text-destructive transition-all duration-150"
             title="Delete log"
           >
             <Trash2 className="w-4 h-4" />
@@ -627,7 +635,7 @@ export default function SpendingRoute() {
       <div className="space-y-5">
         {/* Accumulated Debt - Big Card */}
         <div className="flex flex-row justify-between gap-4">
-          <Card className="border-gray-100 shadow-sm overflow-hidden bg-linear-to-br from-rose-50 to-transparent relative flex-grow">
+          <Card className="border-gray-200 overflow-hidden bg-linear-to-br from-rose-50 to-transparent relative flex-grow">
             <CardContent className="px-6 flex flex-col justify-between">
               <div className="">
                 <span className="text-[10px] uppercase font-bold text-rose-600 tracking-wider">Accumulated Debt</span>
@@ -641,7 +649,7 @@ export default function SpendingRoute() {
           {/* Small Cards: Monthly Quota and Daily Quota */}
           <div className="grid grid-cols-2 gap-3.5">
             {/* Monthly Quota Card */}
-            <Card className="border-gray-100 shadow-sm bg-gradient-to-br from-primary/5 to-transparent relative">
+            <Card className="border-gray-200 bg-gradient-to-br from-primary/5 to-transparent relative">
               <CardContent className="px-4 flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                   <span className="text-[10px] uppercase font-bold text-primary tracking-wider">Monthly Quota</span>
@@ -661,7 +669,7 @@ export default function SpendingRoute() {
             </Card>
 
             {/* Daily Quota Card */}
-            <Card className="border-gray-100 shadow-sm bg-gradient-to-br from-blue-50/50 to-transparent">
+            <Card className="border-gray-200 bg-gradient-to-br from-blue-50/50 to-transparent">
               <CardContent className="px-4 flex flex-col justify-between">
                 <span className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Daily Quota</span>
                 <h3 className="text-base font-extrabold text-foreground tracking-tight">
@@ -675,7 +683,7 @@ export default function SpendingRoute() {
 
 
         {/* Collapsible Filters Card */}
-        <div className="bg-white border border-gray-100 shadow-sm overflow-hidden transition-all duration-200">
+        <div className="bg-white border border-gray-200 rounded-md overflow-hidden transition-all duration-200">
           <button
             type="button"
             onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
@@ -706,10 +714,10 @@ export default function SpendingRoute() {
           </button>
 
           {isFiltersExpanded && (
-            <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="px-4 pb-4 pt-2 border-t border-gray-200 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
               <div className="flex flex-col sm:flex-row gap-3">
                 {/* Month Selection */}
-                <div className="flex items-center gap-2 border border-gray-200 px-3 py-1.5 flex-1 bg-white">
+                <div className="flex items-center gap-2 border border-gray-200 rounded-md px-3 py-1.5 flex-1 bg-white">
                   <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground" />
                   <select
                     value={`${selectedYear}-${selectedMonth}`}
@@ -728,7 +736,7 @@ export default function SpendingRoute() {
                 </div>
 
                 {/* Category Filter */}
-                <div className="flex items-center gap-2 border border-gray-200 px-3 py-1.5 flex-1 bg-white">
+                <div className="flex items-center gap-2 border border-gray-200 rounded-md px-3 py-1.5 flex-1 bg-white">
                   <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
                   <select
                     value={categoryFilter}
@@ -853,7 +861,7 @@ export default function SpendingRoute() {
 
         {/* Add/Edit Expense Dialog */}
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-md p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-foreground">
                 {editingLog ? "Edit Expense" : "Log Expense"}
@@ -872,12 +880,12 @@ export default function SpendingRoute() {
                   <Input
                     id="amount"
                     name="amount"
-                    type="number"
+                    type="text"
                     required
                     value={amount}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(formatRupiahInput(e.target.value))}
                     placeholder="0"
-                    className="pl-9 border-gray-200 focus:border-primary font-bold text-base"
+                    className="pl-9 border-gray-200 focus:border-primary font-bold text-base rounded-md"
                   />
                 </div>
               </div>
@@ -886,7 +894,7 @@ export default function SpendingRoute() {
               <div className="space-y-1.5">
                 <Label htmlFor="category" className="text-xs font-semibold text-foreground">Category</Label>
                 <Select value={category} onValueChange={(val) => setCategory(val || "food")} name="category">
-                  <SelectTrigger id="category" className="border-gray-200">
+                  <SelectTrigger id="category" className="border-gray-200 rounded-md">
                     <SelectValue placeholder="Select Category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -948,12 +956,12 @@ export default function SpendingRoute() {
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
                   placeholder="Starbucks coffee, grocery shopping..."
                   rows={2}
-                  className="border-gray-200 focus:border-primary resize-none"
+                  className="border-gray-200 focus:border-primary resize-none rounded-md"
                 />
               </div>
 
               {/* Use Quota toggle */}
-              <div className="flex items-center justify-between py-2 border-t border-gray-100">
+              <div className="flex items-center justify-between py-2 border-t border-gray-200">
                 <div className="flex flex-col gap-0.5">
                   <Label htmlFor="use-quota" className="text-xs font-semibold text-foreground">
                     Use Daily Quota
@@ -979,14 +987,14 @@ export default function SpendingRoute() {
                   type="button"
                   variant="ghost"
                   onClick={() => setIsFormOpen(false)}
-                  className="text-muted-foreground hover:bg-gray-100 flex-1 sm:flex-initial"
+                  className="text-muted-foreground hover:bg-gray-100 flex-1 sm:flex-initial rounded-md"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={expenseFetcher.state === "submitting"}
-                  className="bg-primary text-primary-foreground hover:bg-primary/95 flex-1 sm:flex-initial"
+                  className="bg-primary text-primary-foreground hover:bg-primary/95 flex-1 sm:flex-initial rounded-md"
                 >
                   {expenseFetcher.state === "submitting" ? (
                     <>
@@ -1004,7 +1012,7 @@ export default function SpendingRoute() {
 
         {/* Set Monthly Quota Dialog */}
         <Dialog open={isQuotaOpen} onOpenChange={setIsQuotaOpen}>
-          <DialogContent className="max-w-[90vw] sm:max-w-sm p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-sm p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-base font-bold text-foreground">
                 Set Monthly Quota ({format(new Date(selectedYear, selectedMonth - 1, 1), "MMMM yyyy")})
@@ -1025,12 +1033,12 @@ export default function SpendingRoute() {
                   <Input
                     id="quota-amount"
                     name="amount"
-                    type="number"
+                    type="text"
                     required
                     value={quotaInput}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuotaInput(e.target.value)}
-                    placeholder="3000000"
-                    className="pl-9 border-gray-200 focus:border-primary font-bold"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuotaInput(formatRupiahInput(e.target.value))}
+                    placeholder="3.000.000"
+                    className="pl-9 border-gray-200 focus:border-primary font-bold rounded-md"
                   />
                 </div>
               </div>
@@ -1040,14 +1048,14 @@ export default function SpendingRoute() {
                   type="button"
                   variant="ghost"
                   onClick={() => setIsQuotaOpen(false)}
-                  className="text-muted-foreground hover:bg-gray-100 flex-1"
+                  className="text-muted-foreground hover:bg-gray-100 flex-1 rounded-md"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={quotaFetcher.state === "submitting"}
-                  className="bg-primary text-primary-foreground hover:bg-primary/95 flex-1"
+                  className="bg-primary text-primary-foreground hover:bg-primary/95 flex-1 rounded-md"
                 >
                   {quotaFetcher.state === "submitting" ? "Saving..." : "Save Quota"}
                 </Button>

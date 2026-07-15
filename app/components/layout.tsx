@@ -21,10 +21,8 @@ interface LayoutProps {
 }
 
 const comingSoonItems = [
-  { id: "money", title: "Money Log", icon: Wallet },
   { id: "pomodoro", title: "Pomodoro Focus", icon: Timer },
   { id: "crm", title: "Personal CRM", icon: Users },
-  { id: "notes", title: "Obsidian Notes", icon: FileText },
   { id: "events", title: "Life Events", icon: Calendar },
   { id: "habits", title: "Habit Tracker", icon: Flame },
 ];
@@ -36,8 +34,8 @@ export function AppLayout({ children, title = "Superapp", actions }: LayoutProps
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Sidebar - Desktop Only */}
-      <aside className="hidden md:flex md:w-64 bg-white border-r border-gray-100 flex-col h-screen sticky top-0 select-none">
-        <div className="p-5 border-b border-gray-100 flex flex-col">
+      <aside className="hidden md:flex md:w-64 bg-white border-r border-gray-200 flex-col h-screen sticky top-0 select-none">
+        <div className="p-5 border-b border-gray-200 flex flex-col">
           <h1 className="text-xl font-bold tracking-tight text-foreground">Superapp</h1>
           <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">Personal Assistant</p>
         </div>
@@ -95,6 +93,32 @@ export function AppLayout({ children, title = "Superapp", actions }: LayoutProps
             Spending
           </NavLink>
 
+          <NavLink
+            to="/money-log"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                isActive ? "text-primary bg-muted font-bold" : "text-muted-foreground hover:text-foreground hover:bg-gray-50"
+              )
+            }
+          >
+            <Wallet className="w-5 h-5" />
+            Money Log
+          </NavLink>
+
+          <NavLink
+            to="/notes"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                isActive ? "text-primary bg-muted font-bold" : "text-muted-foreground hover:text-foreground hover:bg-gray-50"
+              )
+            }
+          >
+            <FileText className="w-5 h-5" />
+            Obsidian Notes
+          </NavLink>
+
           <div className="pt-4 pb-2 px-3 text-[10px] uppercase font-bold text-muted-foreground/60 tracking-wider">
             More Features
           </div>
@@ -122,7 +146,7 @@ export function AppLayout({ children, title = "Superapp", actions }: LayoutProps
       {/* Main Panel */}
       <div className="flex-1 flex flex-col min-h-screen">
         {/* Header Bar */}
-        <header className="bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+        <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
           <div className="flex items-center gap-2">
             {/* Back Chevron for mobile screens when not on home */}
             {!isHome && (

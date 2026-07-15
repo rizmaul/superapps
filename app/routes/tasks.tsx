@@ -298,6 +298,7 @@ export default function TasksRoute() {
   const [createDesc, setCreateDesc] = useState("");
   const [createProj, setCreateProj] = useState("none");
   const [createDue, setCreateDue] = useState<Date | undefined>(undefined);
+  const [createTime, setCreateTime] = useState("");
   const [createTagQuery, setCreateTagQuery] = useState("");
   const [createSelectedTags, setCreateSelectedTags] = useState<string[]>([]);
   const [createNotifyEmail, setCreateNotifyEmail] = useState(false);
@@ -308,6 +309,7 @@ export default function TasksRoute() {
   const [editDesc, setEditDesc] = useState("");
   const [editProj, setEditProj] = useState("none");
   const [editDue, setEditDue] = useState<Date | undefined>(undefined);
+  const [editTime, setEditTime] = useState("");
   const [editTagQuery, setEditTagQuery] = useState("");
   const [editSelectedTags, setEditSelectedTags] = useState<string[]>([]);
 
@@ -322,6 +324,7 @@ export default function TasksRoute() {
       setCreateDesc("");
       setCreateProj("none");
       setCreateDue(undefined);
+      setCreateTime("");
       setCreateTagQuery("");
       setCreateSelectedTags([]);
       setCreateNotifyEmail(false);
@@ -333,11 +336,25 @@ export default function TasksRoute() {
   useEffect(() => {
     if (taskEditFetcher.state === "idle" && taskEditFetcher.data?.success) {
       setEditingTask(null);
+      setEditTime("");
       setEditTagQuery("");
       setEditSelectedTags([]);
       toast.success("Task updated successfully!");
     }
   }, [taskEditFetcher.state, taskEditFetcher.data]);
+
+  // Helper to combine date and optional time into ISO string
+  const getCombinedDateTimeISO = (date: Date | undefined, timeStr: string) => {
+    if (!date) return "";
+    const combined = new Date(date);
+    if (timeStr) {
+      const [hours, minutes] = timeStr.split(":").map(Number);
+      combined.setHours(hours, minutes, 0, 0);
+    } else {
+      combined.setHours(0, 0, 0, 0);
+    }
+    return combined.toISOString();
+  };
 
   // Task events
   const handleOpenEditTask = (task: any, e: React.MouseEvent) => {
@@ -346,7 +363,20 @@ export default function TasksRoute() {
     setEditTitle(task.title);
     setEditDesc(task.description || "");
     setEditProj(task.projectId || "none");
-    setEditDue(task.dueDate ? new Date(task.dueDate) : undefined);
+    if (task.dueDate) {
+      const d = new Date(task.dueDate);
+      setEditDue(d);
+      if (d.getHours() !== 0 || d.getMinutes() !== 0) {
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        setEditTime(`${hh}:${mm}`);
+      } else {
+        setEditTime("");
+      }
+    } else {
+      setEditDue(undefined);
+      setEditTime("");
+    }
     setEditSelectedTags(task.tags.map((t: any) => t.tag.name));
     setEditTagQuery("");
   };
@@ -449,8 +479,8 @@ export default function TasksRoute() {
         key={task.id}
         onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
         className={cn(
-          "bg-white border border-gray-100 p-4 transition-all duration-200 shadow-sm flex flex-col gap-2 cursor-pointer active:bg-gray-50/50 hover:border-gray-200",
-          task.status === "done" && "bg-gray-50/50 border-gray-100 shadow-none",
+          "bg-white border border-gray-200 rounded-md p-4 transition-all duration-200 flex flex-col gap-2 cursor-pointer active:bg-gray-50/50 hover:border-gray-300",
+          task.status === "done" && "bg-gray-50/50 border-gray-200",
         )}
       >
         <div className="flex items-start justify-between gap-3">
@@ -522,7 +552,13 @@ export default function TasksRoute() {
                     )}
                   >
                     {isOverdue && <AlertCircle className="w-3 h-3" />}
-                    {format(new Date(task.dueDate), "MMM d")}
+                    {(() => {
+                      const d = new Date(task.dueDate);
+                      if (d.getHours() !== 0 || d.getMinutes() !== 0) {
+                        return format(d, "MMM d, h:mm a");
+                      }
+                      return format(d, "MMM d");
+                    })()}
                     {isDueToday && " (Today)"}
                     {isOverdue && " (Overdue)"}
                   </span>
@@ -552,7 +588,7 @@ export default function TasksRoute() {
         </div>
 
         {isExpanded && (
-          <div className="mt-2 pt-3 border-t border-gray-100 flex flex-col gap-2 text-xs text-foreground/80 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="mt-2 pt-3 border-t border-gray-200 flex flex-col gap-2 text-xs text-foreground/80 animate-in fade-in slide-in-from-top-1 duration-200">
             {task.description ? (
               <div className="bg-gray-50/50 p-2.5 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
                 {task.description}
@@ -582,7 +618,7 @@ export default function TasksRoute() {
             className={cn(
               "flex-1 text-center py-2 text-xs font-semibold transition-all duration-200 flex items-center justify-center gap-1.5",
               activeSubTab === "tasks"
-                ? "bg-white text-foreground shadow-sm"
+                ? "bg-white text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -595,7 +631,7 @@ export default function TasksRoute() {
             className={cn(
               "flex-1 text-center py-2 text-xs font-semibold transition-all duration-200 flex items-center justify-center gap-1.5",
               activeSubTab === "tags"
-                ? "bg-white text-foreground shadow-sm"
+                ? "bg-white text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -615,7 +651,7 @@ export default function TasksRoute() {
                   className={cn(
                     "flex-1 text-center py-2 text-xs font-semibold transition-all duration-200",
                     statusFilter === "todo"
-                      ? "bg-white text-foreground shadow-sm"
+                      ? "bg-white text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -626,7 +662,7 @@ export default function TasksRoute() {
                   className={cn(
                     "flex-1 text-center py-2 text-xs font-semibold transition-all duration-200",
                     statusFilter === "done"
-                      ? "bg-white text-foreground shadow-sm"
+                      ? "bg-white text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -637,7 +673,7 @@ export default function TasksRoute() {
                   className={cn(
                     "flex-1 text-center py-2 text-xs font-semibold transition-all duration-200",
                     statusFilter === "all"
-                      ? "bg-white text-foreground shadow-sm"
+                      ? "bg-white text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -647,7 +683,7 @@ export default function TasksRoute() {
 
               <div className="flex flex-col sm:flex-row gap-2">
                 {/* Project Filter */}
-                <div className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 shadow-sm flex-1">
+                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-1.5 flex-1">
                   <Filter className="w-3.5 h-3.5 text-muted-foreground" />
                   <select
                     value={projectFilter}
@@ -665,7 +701,7 @@ export default function TasksRoute() {
                 </div>
 
                 {/* Tag Filter */}
-                <div className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 shadow-sm flex-1">
+                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-1.5 flex-1">
                   <TagIcon className="w-3.5 h-3.5 text-muted-foreground" />
                   <select
                     value={tagFilter}
@@ -684,7 +720,7 @@ export default function TasksRoute() {
             </div>
 
             {/* Task View Header Actions */}
-            <div className="bg-white border border-gray-100 p-3 shadow-sm flex items-center justify-between gap-3">
+            <div className="bg-white border border-gray-200 rounded-md p-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Switch
                   id="group-by-project"
@@ -701,7 +737,7 @@ export default function TasksRoute() {
 
               <Button
                 onClick={() => setIsCreateOpen(true)}
-                className="text-xs gap-1 h-8 px-3 font-semibold shadow-sm"
+                className="text-xs gap-1 h-8 px-3 font-semibold rounded-md"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>New Task</span>
@@ -765,7 +801,7 @@ export default function TasksRoute() {
 
         {/* ---------------- TAGS VIEW ---------------- */}
         {activeSubTab === "tags" && (
-          <div className="bg-white border border-gray-100 p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-gray-200 rounded-md p-5 space-y-4">
             <div className="space-y-1.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Active Tags
@@ -784,17 +820,17 @@ export default function TasksRoute() {
                 {tags.map((tag: any) => (
                   <div
                     key={tag.id}
-                    className="flex items-center gap-1.5 pl-3 pr-1.5 py-1 bg-gray-50 border border-gray-100 hover:border-gray-200 transition-all duration-200"
+                    className="flex items-center gap-1.5 pl-3 pr-1.5 py-1 bg-gray-50 border border-gray-200 rounded-md hover:border-gray-300 transition-all duration-200"
                   >
                     <span className="text-xs font-medium text-foreground">
                       #{tag.name}
                     </span>
-                    <span className="text-[10px] text-muted-foreground font-bold bg-white border border-gray-100 px-1 py-0.5">
+                    <span className="text-[10px] text-muted-foreground font-bold bg-white border border-gray-200 rounded-md px-1 py-0.5">
                       {tag._count.tasks}
                     </span>
                     <button
                       onClick={() => handleDeleteTag(tag.id, tag.name)}
-                      className="w-5 h-5 hover:bg-gray-200 flex items-center justify-center text-muted-foreground hover:text-destructive transition-all duration-150"
+                      className="w-5 h-5 hover:bg-gray-200 flex items-center justify-center text-muted-foreground hover:text-destructive transition-all duration-150 rounded-md"
                       title="Delete tag"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -812,7 +848,7 @@ export default function TasksRoute() {
           onOpenChange={setIsCreateOpen}
           disablePointerDismissal={true}
         >
-          <DialogContent className="max-w-[120vw] sm:max-w-2xl p-6">
+          <DialogContent className="max-w-[120vw] sm:max-w-2xl p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-foreground">
                 Add New Task
@@ -862,11 +898,11 @@ export default function TasksRoute() {
                   }
                   placeholder="Add details or checklists..."
                   rows={3}
-                  className="border-gray-200 focus:border-primary resize-none"
+                  className="border-gray-200 focus:border-primary resize-y"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="create-project"
@@ -918,42 +954,58 @@ export default function TasksRoute() {
                   </Select>
                 </div>
 
-                <div className="space-y-1.5 flex flex-col">
-                  <Label className="text-xs font-semibold text-foreground mb-1.5">
-                    Due Date
-                  </Label>
-                  <input
-                    type="hidden"
-                    name="dueDate"
-                    value={createDue ? createDue.toISOString() : ""}
-                  />
-                  <Popover>
-                    <PopoverTrigger
-                      render={
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full border-gray-200 justify-start text-left font-normal px-3",
-                            !createDue && "text-muted-foreground",
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {createDue ? (
-                            format(createDue, "PPP")
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
-                        </Button>
-                      }
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5 flex flex-col">
+                    <Label className="text-xs font-semibold text-foreground mb-1.5">
+                      Due Date
+                    </Label>
+                    <input
+                      type="hidden"
+                      name="dueDate"
+                      value={getCombinedDateTimeISO(createDue, createTime)}
                     />
-                    <PopoverContent className="w-auto p-0" align="end">
-                      <Calendar
-                        mode="single"
-                        selected={createDue}
-                        onSelect={setCreateDue}
+                    <Popover>
+                      <PopoverTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            type="button"
+                            className={cn(
+                              "w-full border-gray-200 justify-start text-left font-normal px-3 h-9",
+                              !createDue && "text-muted-foreground",
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {createDue ? (
+                              format(createDue, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                          </Button>
+                        }
                       />
-                    </PopoverContent>
-                  </Popover>
+                      <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar
+                          mode="single"
+                          selected={createDue}
+                          onSelect={setCreateDue}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  <div className="space-y-1.5 flex flex-col">
+                    <Label className="text-xs font-semibold text-foreground mb-1.5">
+                      Due Time (optional)
+                    </Label>
+                    <Input
+                      type="time"
+                      value={createTime}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCreateTime(e.target.value)}
+                      className="border-gray-200 focus:border-primary rounded-md h-9 text-xs"
+                      disabled={!createDue}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -972,7 +1024,7 @@ export default function TasksRoute() {
                 />
 
                 {createTagQuery.trim() !== "" && (
-                  <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-gray-200 shadow-lg max-h-40 overflow-y-auto p-1 space-y-0.5">
+                  <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-md max-h-40 overflow-y-auto p-1 space-y-0.5">
                     {tags
                       .filter(
                         (t) =>
@@ -1057,7 +1109,7 @@ export default function TasksRoute() {
                 />
               </div>
 
-              <div className="flex items-center justify-between py-2 border-t border-gray-100 mt-2">
+              <div className="flex items-center justify-between py-2 border-t border-gray-200 mt-2">
                 <div className="flex flex-col gap-0.5">
                   <Label
                     htmlFor="notify-email"
@@ -1115,7 +1167,7 @@ export default function TasksRoute() {
           onOpenChange={(open: boolean) => !open && setEditingTask(null)}
           disablePointerDismissal={true}
         >
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-4xl p-6 rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-foreground">
                 Edit Task
@@ -1166,11 +1218,11 @@ export default function TasksRoute() {
                   }
                   placeholder="Add details or checklists..."
                   rows={3}
-                  className="border-gray-200 focus:border-primary resize-none"
+                  className="border-gray-200 focus:border-primary resize-y"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="edit-project"
@@ -1222,42 +1274,58 @@ export default function TasksRoute() {
                   </Select>
                 </div>
 
-                <div className="space-y-1.5 flex flex-col">
-                  <Label className="text-xs font-semibold text-foreground mb-1.5">
-                    Due Date
-                  </Label>
-                  <input
-                    type="hidden"
-                    name="dueDate"
-                    value={editDue ? editDue.toISOString() : ""}
-                  />
-                  <Popover>
-                    <PopoverTrigger
-                      render={
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full border-gray-200 justify-start text-left font-normal px-3",
-                            !editDue && "text-muted-foreground",
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {editDue ? (
-                            format(editDue, "PPP")
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
-                        </Button>
-                      }
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5 flex flex-col">
+                    <Label className="text-xs font-semibold text-foreground mb-1.5">
+                      Due Date
+                    </Label>
+                    <input
+                      type="hidden"
+                      name="dueDate"
+                      value={getCombinedDateTimeISO(editDue, editTime)}
                     />
-                    <PopoverContent className="w-auto p-0" align="end">
-                      <Calendar
-                        mode="single"
-                        selected={editDue}
-                        onSelect={setEditDue}
+                    <Popover>
+                      <PopoverTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            type="button"
+                            className={cn(
+                              "w-full border-gray-200 justify-start text-left font-normal px-3 h-9",
+                              !editDue && "text-muted-foreground",
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {editDue ? (
+                              format(editDue, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                          </Button>
+                        }
                       />
-                    </PopoverContent>
-                  </Popover>
+                      <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar
+                          mode="single"
+                          selected={editDue}
+                          onSelect={setEditDue}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  <div className="space-y-1.5 flex flex-col">
+                    <Label className="text-xs font-semibold text-foreground mb-1.5">
+                      Due Time (optional)
+                    </Label>
+                    <Input
+                      type="time"
+                      value={editTime}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditTime(e.target.value)}
+                      className="border-gray-200 focus:border-primary rounded-md h-9 text-xs"
+                      disabled={!editDue}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1276,7 +1344,7 @@ export default function TasksRoute() {
                 />
 
                 {editTagQuery.trim() !== "" && (
-                  <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-gray-200 shadow-lg max-h-40 overflow-y-auto p-1 space-y-0.5">
+                  <div className="absolute left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-md max-h-40 overflow-y-auto p-1 space-y-0.5">
                     {tags
                       .filter(
                         (t) =>
@@ -1395,7 +1463,7 @@ export default function TasksRoute() {
           onOpenChange={(open: boolean) => !open && setTaskToDelete(null)}
           disablePointerDismissal={true}
         >
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-md p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-destructive" />

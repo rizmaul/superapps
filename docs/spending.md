@@ -11,6 +11,8 @@ Lets say the month is 30 day and I set the monthly quota as 3.000.000 rupiah. Th
 # Technicalities
 - I could change the monthly quota whenever I want to
 - There's a toggle which expenses that will be using daily quota or not; although the default should be using the daily quota
+- Money inputs (amount and monthly quota) are dynamically formatted with dots (.) as thousand separators as the user types
+
 
 # User Experience
 - Only show the spending of this month in the main page by default

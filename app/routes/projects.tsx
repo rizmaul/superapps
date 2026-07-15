@@ -54,6 +54,10 @@ export async function loader({ context }: Route.LoaderArgs) {
     .prepare("SELECT tt.*, t.name as tag_name FROM task_tags tt JOIN tags t ON tt.tag_id = t.id")
     .all();
 
+  const { results: rawNotes } = await db
+    .prepare("SELECT * FROM notes ORDER BY updated_at DESC")
+    .all();
+
   // Group tags by task ID
   const tagsByTaskId: Record<string, any[]> = {};
   if (rawTaskTags) {
@@ -92,7 +96,26 @@ export async function loader({ context }: Route.LoaderArgs) {
     });
   }
 
-  // Map projects to camelCase and attach tasks
+  // Group notes by project ID and map to camelCase
+  const notesByProjectId: Record<string, any[]> = {};
+  if (rawNotes) {
+    rawNotes.forEach((n: any) => {
+      const pId = n.project_id || "none";
+      if (!notesByProjectId[pId]) {
+        notesByProjectId[pId] = [];
+      }
+      notesByProjectId[pId].push({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        projectId: n.project_id,
+        createdAt: n.created_at,
+        updatedAt: n.updated_at,
+      });
+    });
+  }
+
+  // Map projects to camelCase and attach tasks and notes
   const projects = (rawProjects || []).map((p: any) => ({
     id: p.id,
     name: p.name,
@@ -101,6 +124,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     isArchived: Boolean(p.is_archived),
     createdAt: p.created_at,
     tasks: tasksByProjectId[p.id] || [],
+    notes: notesByProjectId[p.id] || [],
   }));
 
   return { projects };
@@ -362,7 +386,7 @@ export default function ProjectsRoute() {
       title={currentProject ? currentProject.name : "Project Boards"}
       actions={
         !currentProject && (
-          <Button onClick={handleOpenCreateProject} className="text-xs gap-1.5 h-8 px-3 font-semibold shadow-sm">
+          <Button onClick={handleOpenCreateProject} className="text-xs gap-1.5 h-8 px-3 font-semibold rounded-md">
             <Plus className="w-3.5 h-3.5" />
             <span>New Project</span>
           </Button>
@@ -375,7 +399,7 @@ export default function ProjectsRoute() {
         {currentProject ? (
           <div className="space-y-4 animate-in fade-in duration-200">
             {/* Header / Meta Card */}
-            <div className="bg-white border border-gray-100 p-5 shadow-sm space-y-3">
+            <div className="bg-white border border-gray-200 p-5 rounded-md space-y-3">
               <div className="flex items-center gap-2">
                 <Button 
                   onClick={() => setSelectedProjectId(null)} 
@@ -450,7 +474,7 @@ export default function ProjectsRoute() {
                         {pendingTasks.map((task) => (
                           <div 
                             key={task.id}
-                            className="bg-white border border-gray-100 p-3.5 shadow-sm flex items-center justify-between gap-4"
+                            className="bg-white border border-gray-200 p-3.5 rounded-md flex items-center justify-between gap-4"
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                               <div onClick={() => handleToggleTask(task.id, task.status)} className="cursor-pointer">
@@ -500,7 +524,7 @@ export default function ProjectsRoute() {
                         {completedTasks.map((task) => (
                           <div 
                             key={task.id}
-                            className="bg-white/60 border border-gray-100 p-3.5 flex items-center justify-between gap-4"
+                            className="bg-white/60 border border-gray-200 p-3.5 rounded-md flex items-center justify-between gap-4"
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1 opacity-70">
                               <div onClick={() => handleToggleTask(task.id, task.status)} className="cursor-pointer">
@@ -531,6 +555,45 @@ export default function ProjectsRoute() {
                 </div>
               )}
             </div>
+
+            {/* Notes list inside Project */}
+            <div className="space-y-3 pt-4 border-t border-gray-200">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">Project Notes</h4>
+              
+              {!currentProject.notes || currentProject.notes.length === 0 ? (
+                <div className="bg-white border border-dashed border-gray-200 rounded-md py-8 px-4 text-center flex flex-col items-center justify-center gap-2">
+                  <span className="text-xs font-semibold text-foreground">No notes assigned</span>
+                  <p className="text-[10px] text-muted-foreground">Tag notes with this project in the Obsidian Notes section.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {currentProject.notes.map((note: any) => (
+                    <div
+                      key={note.id}
+                      className="bg-white border border-gray-200 p-4 rounded-md flex flex-col gap-2 justify-between"
+                    >
+                      <div className="space-y-1">
+                        <span className="text-xs font-bold text-foreground leading-tight line-clamp-1">
+                          {note.title}
+                        </span>
+                        <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed font-mono">
+                          {note.content.replace(/[#*`>]/g, "")}
+                        </p>
+                      </div>
+                      <div className="flex justify-between items-center text-[9px] text-muted-foreground font-semibold pt-1 border-t border-gray-50">
+                        <span>Updated {format(new Date(note.updatedAt), "MMM d, yyyy")}</span>
+                        <a
+                          href={`/notes?search=${encodeURIComponent(note.title)}`}
+                          className="text-primary hover:underline font-bold"
+                        >
+                          View note →
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           
@@ -556,7 +619,7 @@ export default function ProjectsRoute() {
                   <div
                     key={project.id}
                     onClick={() => setSelectedProjectId(project.id)}
-                    className="bg-white border border-gray-100 overflow-hidden shadow-sm flex flex-col cursor-pointer active:bg-gray-50/50 hover:border-gray-200 transition-all duration-200"
+                    className="bg-white border border-gray-200 overflow-hidden rounded-md flex flex-col cursor-pointer active:bg-gray-50/50 hover:border-gray-300 transition-all duration-200"
                     style={{ borderLeft: `5px solid ${project.colorHex || "#739dd1"}` }}
                   >
                     <div className="p-4 flex flex-col justify-between flex-1 gap-4">
@@ -612,7 +675,7 @@ export default function ProjectsRoute() {
 
         {/* Project Create / Edit Dialog */}
         <Dialog open={isProjectOpen} onOpenChange={setIsProjectOpen} disablePointerDismissal={true}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-md p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-foreground">
                 {editingProj ? "Edit Project" : "Create Project"}
@@ -668,7 +731,7 @@ export default function ProjectsRoute() {
                       style={{ backgroundColor: color }}
                     >
                       {projColor === color && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-white shadow-sm" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-white" />
                       )}
                     </button>
                   ))}
@@ -715,7 +778,7 @@ export default function ProjectsRoute() {
 
         {/* Custom Project Archive Confirmation Dialog */}
         <Dialog open={!!projToArchive} onOpenChange={(open: boolean) => !open && setProjToArchive(null)} disablePointerDismissal={true}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-md p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-amber-600" />
@@ -751,7 +814,7 @@ export default function ProjectsRoute() {
 
         {/* Inline Task Create Dialog inside Project Detail */}
         <Dialog open={isTaskCreateOpen} onOpenChange={setIsTaskCreateOpen} disablePointerDismissal={true}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-md p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-foreground">Add Task to Project</DialogTitle>
             </DialogHeader>
@@ -850,7 +913,7 @@ export default function ProjectsRoute() {
 
         {/* Task Edit Dialog */}
         <Dialog open={!!editingTask} onOpenChange={(open: boolean) => !open && setEditingTask(null)} disablePointerDismissal={true}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-md p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-foreground">Edit Task</DialogTitle>
             </DialogHeader>
@@ -947,7 +1010,7 @@ export default function ProjectsRoute() {
 
         {/* Custom Task Delete Confirmation Dialog */}
         <Dialog open={!!taskToDelete} onOpenChange={(open: boolean) => !open && setTaskToDelete(null)} disablePointerDismissal={true}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md p-6">
+          <DialogContent className="max-w-[90vw] sm:max-w-md p-6 rounded-md">
             <DialogHeader>
               <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-destructive" />

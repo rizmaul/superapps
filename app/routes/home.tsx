@@ -73,10 +73,10 @@ export default function HomeRoute({ loaderData }: Route.ComponentProps) {
       title: "Money Log",
       description: "Monitor accounts and net worth growth",
       icon: Wallet,
-      href: "#",
-      active: false,
-      color: "bg-gray-100 text-gray-400",
-      badge: "Coming Soon"
+      href: "/money-log",
+      active: true,
+      color: "bg-primary text-primary-foreground",
+      badge: "Active"
     },
     {
       id: "pomodoro",
@@ -103,10 +103,10 @@ export default function HomeRoute({ loaderData }: Route.ComponentProps) {
       title: "Obsidian Notes",
       description: "Markdown personal notes & AI editor",
       icon: FileText,
-      href: "#",
-      active: false,
-      color: "bg-gray-100 text-gray-400",
-      badge: "Coming Soon"
+      href: "/notes",
+      active: true,
+      color: "bg-primary text-primary-foreground",
+      badge: "Active"
     },
     {
       id: "events",
@@ -134,7 +134,7 @@ export default function HomeRoute({ loaderData }: Route.ComponentProps) {
     <AppLayout title="Superapp">
       <div className="space-y-6">
         {/* Welcome Banner */}
-        <div className="flex items-center justify-between bg-muted/30 border border-gray-100 p-5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.01)]">
+        <div className="flex items-center justify-between bg-muted/30 border border-gray-200 p-5 rounded-md">
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-primary uppercase tracking-wider">{todayStr}</p>
             <h2 className="text-lg font-extrabold text-foreground">Welcome, Rizki</h2>
@@ -160,9 +160,9 @@ export default function HomeRoute({ loaderData }: Route.ComponentProps) {
                     to={item.href}
                     className="block group"
                   >
-                    <Card className="border-gray-100 shadow-sm hover:shadow-md hover:border-primary/25 active:scale-[0.99] transition-all duration-200 overflow-hidden bg-white">
+                    <Card className="border-gray-200 hover:border-primary/25 active:scale-[0.99] transition-all duration-200 overflow-hidden bg-white rounded-md">
                       <CardContent className="p-4 flex items-center gap-4">
-                        <div className={`w-12 h-12 flex items-center justify-center ${item.color} shadow-sm`}>
+                        <div className={`w-12 h-12 flex items-center justify-center ${item.color} rounded-md`}>
                           <Icon className="w-6 h-6" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -183,10 +183,10 @@ export default function HomeRoute({ loaderData }: Route.ComponentProps) {
               return (
                 <Card 
                   key={item.id} 
-                  className="border-gray-100 shadow-sm opacity-60 bg-gray-50/50"
+                  className="border-gray-200 opacity-60 bg-gray-50/50 rounded-md"
                 >
                   <CardContent className="p-4 flex items-center gap-4">
-                    <div className={`w-12 h-12 flex items-center justify-center ${item.color}`}>
+                    <div className={`w-12 h-12 flex items-center justify-center ${item.color} rounded-md`}>
                       <Icon className="w-6 h-6" />
                     </div>
                     <div className="flex-1 min-w-0">
