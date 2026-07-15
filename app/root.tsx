@@ -9,6 +9,19 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { getDB } from "@/lib/db.server";
+
+export async function loader({ context }: Route.LoaderArgs) {
+	const db = getDB(context.cloudflare.env.DB);
+	const projects = await db.project.findMany({
+		where: { isArchived: false },
+		orderBy: { name: "asc" },
+	});
+	const tags = await db.tag.findMany({
+		orderBy: { name: "asc" },
+	});
+	return { projects, tags };
+}
 
 export const links: Route.LinksFunction = () => [
 	{ rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,6 +36,8 @@ export const links: Route.LinksFunction = () => [
 	},
 ];
 
+import { Toaster } from "@/components/ui/sonner";
+
 export function Layout({ children }: { children: React.ReactNode }) {
 	return (
 		<html lang="en">
@@ -34,6 +49,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			</head>
 			<body>
 				{children}
+				<Toaster position="top-center" />
 				<ScrollRestoration />
 				<Scripts />
 			</body>
